@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="presentacion" />
+        <module name="aplicacion" />
+        <module name="core" />
+        <module name="infraestructura" />
+        <module name="dominio" />
+      </profile>
+    </annotationProcessing>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="aplicacion" options="-parameters" />
+      <module name="core" options="-parameters" />
+      <module name="dominio" options="-parameters" />
+      <module name="infraestructura" options="-parameters" />
+      <module name="presentacion" options="-parameters" />
+    </option>
+  </component>
+</project>
