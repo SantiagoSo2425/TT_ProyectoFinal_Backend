@@ -876,22 +876,24 @@ spring.datasource.hikari.data-source-properties.ssl=true
 spring.datasource.hikari.data-source-properties.sslmode=require
 ```
 
-### Despliegue Inicial en AWS
+## 🚀 Proceso de Migración Simplificado
 
-#### 1. Prerequisitos
-
+### **Paso 1: Preparación**
 ```bash
-# Instalar AWS CLI
+# Instalar AWS CLI (si no está instalado)
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip
 sudo ./aws/install
 
-# Configurar credenciales
+# Configurar credenciales AWS
 aws configure
+# AWS Access Key ID: [Tu Access Key]
+# AWS Secret Access Key: [Tu Secret Key]
+# Default region name: us-east-1
+# Default output format: json
 ```
 
-#### 2. Ejecutar Script de Deployment
-
+### **Paso 2: Ejecutar Script de Deployment**
 ```bash
 # Hacer script ejecutable
 chmod +x scripts/deploy-aws.sh
@@ -903,79 +905,20 @@ chmod +x scripts/deploy-aws.sh
 ./scripts/deploy-aws.sh prod
 ```
 
-#### 3. ¿Qué hace el script?
+### **Paso 3: El Script Automatiza Todo**
+El script `deploy-aws.sh` realiza automáticamente:
 
-1. **Verifica credenciales AWS** y obtiene Account ID
-2. **Crea repositorio ECR** si no existe
-3. **Despliega stack RDS** usando CloudFormation
-4. **Ejecuta scripts DDL/DML** en la nueva base de datos
-5. **Genera Task Definition** con variables actualizadas
-6. **Crea CloudWatch Log Group** para ECS
+1. ✅ **Verifica credenciales AWS** y obtiene Account ID
+2. ✅ **Crea repositorio ECR** si no existe
+3. ✅ **Despliega stack RDS** usando CloudFormation
+4. ✅ **Configura Security Groups** y Secrets Manager
+5. ✅ **Ejecuta scripts DDL/DML** en la nueva base de datos
+6. ✅ **Genera Task Definition** con variables actualizadas
+7. ✅ **Crea CloudWatch Log Group** para ECS
 
-### Infraestructura como Código
-
-#### CloudFormation para RDS
-
-El template crea automáticamente:
-
-- **RDS PostgreSQL 15.4** con encryption habilitada
-- **Subnet Group** en subnets privadas (multi-AZ)
-- **Security Groups** con acceso restringido
-- **Secrets Manager** para credenciales
-- **Enhanced Monitoring** y Performance Insights
-
-**Características principales:**
-```yaml
-Resources:
-  DBInstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      Engine: postgres
-      EngineVersion: '15.4'
-      DBInstanceClass: db.t3.micro
-      StorageEncrypted: true
-      BackupRetentionPeriod: 7
-      EnablePerformanceInsights: true
-```
-
-#### ECS Task Definition
-
-La Task Definition incluye:
-
-- **Fargate deployment** (512 CPU, 1024 MB memory)
-- **Variables de entorno** para Spring Boot
-- **Secrets desde Secrets Manager** para RDS
-- **Health checks** automáticos
-- **CloudWatch logging**
-
+### **Paso 4: Variables Configuradas Automáticamente**
+El CloudFormation crea en **AWS Secrets Manager**:
 ```json
-{
-  "environment": [
-    {"name": "SPRING_PROFILES_ACTIVE", "value": "aws"}
-  ],
-  "secrets": [
-    {
-      "name": "RDS_DB_URL",
-      "valueFrom": "arn:aws:secretsmanager:...:secret:dev/festivos-api/database:url::"
-    }
-  ]
-}
-```
-
-### Variables de Entorno AWS
-
-#### En CodeBuild
-```bash
-# Variables requeridas en CodeBuild Environment
-AWS_ACCOUNT_ID=123456789012
-AWS_DEFAULT_REGION=us-east-1
-IMAGE_REPO_NAME=festivos-api
-```
-
-#### En Secrets Manager
-El CloudFormation crea automáticamente:
-```bash
-# Secret: /dev/festivos-api/database
 {
   "username": "festivos_user",
   "password": "tu_password_seguro",
@@ -986,143 +929,20 @@ El CloudFormation crea automáticamente:
 }
 ```
 
-### Pipeline CI/CD Completo
-
-#### Buildspec Actualizado
-
-El `buildspec-backend.yml` ahora incluye:
-
-```yaml
-secrets-manager:
-  RDS_DB_PASSWORD: /dev/festivos-api/database:password
-  RDS_DB_URL: /dev/festivos-api/database:url
-  RDS_DB_USERNAME: /dev/festivos-api/database:username
-```
-
-#### Pipeline Stages
-
-1. **Source**: GitHub/CodeCommit trigger
-2. **Build**: CodeBuild con tests + Docker build
-3. **Deploy**: ECS usando `imagedefinitions.json`
-
-### Monitoreo en AWS
-
-#### CloudWatch Dashboards
-
-Métricas automáticas disponibles:
-- **RDS**: CPU, memoria, conexiones, I/O
-- **ECS**: CPU, memoria, tareas en ejecución
-- **Application**: Logs estructurados con Spring Boot
-
-#### Alertas Recomendadas
-
+### **Paso 5: Configurar CodeBuild (Una sola vez)**
+En la consola de AWS CodeBuild, agregar estas variables de entorno:
 ```bash
-# Crear alertas CloudWatch
-aws cloudwatch put-metric-alarm \
-  --alarm-name "RDS-CPU-High" \
-  --alarm-description "RDS CPU > 80%" \
-  --metric-name CPUUtilization \
-  --namespace AWS/RDS \
-  --statistic Average \
-  --period 300 \
-  --threshold 80 \
-  --comparison-operator GreaterThanThreshold
+AWS_ACCOUNT_ID=123456789012          # Se obtiene automáticamente del script
+AWS_DEFAULT_REGION=us-east-1
+IMAGE_REPO_NAME=festivos-api
 ```
 
-### Seguridad en AWS
+### **Paso 6: ¡Listo para CI/CD!**
+Después del deployment inicial:
+- ✅ **RDS funcionando** con backup automático
+- ✅ **ECR repository** creado para imágenes Docker
+- ✅ **Secrets Manager** configurado con credenciales
+- ✅ **Task Definition** lista para ECS
+- ✅ **Pipeline CI/CD** puede comenzar a funcionar
 
-#### Network Security
-- **VPC isolation**: RDS en subnets privadas
-- **Security Groups**: Solo puerto 5432 desde ECS
-- **SSL/TLS**: Conexiones encriptadas obligatorias
-
-#### Secrets Management
-- **AWS Secrets Manager**: Credenciales rotadas automáticamente
-- **IAM roles**: Acceso granular por servicio
-- **Parameter Store**: Configuración no sensible
-
-#### Compliance
-- **Encryption**: En tránsito y en reposo
-- **Backups**: Automatizados con retention de 7 días
-- **Monitoring**: All API calls logged en CloudTrail
-
-### Costos Estimados (us-east-1)
-
-#### Desarrollo
-- **RDS db.t3.micro**: ~$13/mes
-- **ECS Fargate**: ~$6/mes (0.5 vCPU, 1GB)
-- **ECR storage**: ~$1/mes
-- **CloudWatch logs**: ~$2/mes
-- **Total**: ~$22/mes
-
-#### Producción
-- **RDS db.t3.small**: ~$26/mes
-- **ECS Fargate**: ~$12/mes (1 vCPU, 2GB)
-- **Load Balancer**: ~$16/mes
-- **Total**: ~$54/mes
-
-### Comandos de Gestión AWS
-
-#### Verificar Deployment
-```bash
-# Estado del stack RDS
-aws cloudformation describe-stacks --stack-name festivos-rds-dev
-
-# Estado del servicio ECS
-aws ecs describe-services --cluster festivos-cluster --services festivos-api
-
-# Logs de la aplicación
-aws logs get-log-events --log-group-name /ecs/festivos-api
-```
-
-#### Troubleshooting
-```bash
-# Conectar a RDS directamente
-aws rds describe-db-instances --db-instance-identifier dev-festivos-db
-
-# Verificar secrets
-aws secretsmanager get-secret-value --secret-id dev/festivos-api/database
-
-# Logs de CodeBuild
-aws logs filter-log-events --log-group-name /aws/codebuild/festivos-api
-```
-
-#### Rollback
-```bash
-# Rollback de ECS service
-aws ecs update-service \
-  --cluster festivos-cluster \
-  --service festivos-api \
-  --task-definition festivos-api-task:PREVIOUS_REVISION
-
-# Eliminar stack RDS (cuidado!)
-aws cloudformation delete-stack --stack-name festivos-rds-dev
-```
-
-### Migración de Datos
-
-#### Desde Docker a RDS
-```bash
-# Backup desde container local
-docker exec postgres pg_dump -U postgres festivos > backup_local.sql
-
-# Restore a RDS
-psql -h your-rds-endpoint.amazonaws.com -U festivos_user -d festivos -f backup_local.sql
-```
-
-#### Estrategia Blue-Green
-1. **Crear nuevo ambiente** con RDS
-2. **Migrar datos** en ventana de mantenimiento
-3. **Switchear tráfico** usando Route 53
-4. **Verificar funcionalidad** completa
-5. **Eliminar ambiente anterior**
-
-### Próximos Pasos
-
-Una vez deployado en AWS:
-
-1. **Configurar dominio personalizado** con Route 53
-2. **Implementar HTTPS** con ACM + ALB
-3. **Setup de alertas** y dashboards
-4. **Backup strategy** para disaster recovery
-5. **Auto-scaling** basado en métricas
+## Despliegue Inicial en AWS
