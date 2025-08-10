@@ -1,0 +1,168 @@
+﻿version: 0.2
+
+# Buildspec para CodeBuild - Backend API Festivos
+# Maneja: ECR login, Maven build, Docker build/push, imagedefinitions.json
+
+env:
+  variables:
+    # Variables de configuración
+    JAVA_HOME: "/usr/lib/jvm/java-17-amazon-corretto"
+    MAVEN_OPTS: "-Xmx1024m"
+    # Variables de Docker/ECR (se configuran en CodeBuild)
+    # AWS_DEFAULT_REGION: us-east-1
+    # AWS_ACCOUNT_ID: 123456789012
+    # IMAGE_REPO_NAME: festivos-api
+    # IMAGE_TAG: latest
+
+  # Variables secretas desde Parameter Store o Secrets Manager
+  parameter-store:
+    SONAR_TOKEN: /festivos-api/sonar/token
+
+  # Variables de Secrets Manager para RDS
+  secrets-manager:
+    RDS_DB_PASSWORD: /dev/festivos-api/database:password
+    RDS_DB_URL: /dev/festivos-api/database:url
+    RDS_DB_USERNAME: /dev/festivos-api/database:username
+
+  # Variables exportadas para ECS deployment
+  exported-variables:
+    - IMAGE_TAG
+    - IMAGE_URI
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto17
+      docker: 20
+    commands:
+      - echo "📦 Instalando dependencias..."
+      - echo "Java version:"
+      - java -version
+      - echo "Maven version:"
+      - mvn --version
+      - echo "Docker version:"
+      - docker --version
+      - echo "AWS CLI version:"
+      - aws --version
+
+  pre_build:
+    commands:
+      - echo "🔧 Configuración inicial..."
+
+      # Configurar variables de entorno
+      - export IMAGE_TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:0:8}-$(date +%Y%m%d-%H%M%S)
+      - export IMAGE_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - export REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+
+      # Mostrar variables
+      - echo "Image Tag:" $IMAGE_TAG
+      - echo "Image URI:" $IMAGE_URI
+      - echo "Repository URI:" $REPOSITORY_URI
+
+      # Login a Amazon ECR
+      - echo "🔐 Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+
+      # Verificar conectividad
+      - echo "📡 Verificando conectividad..."
+      - aws sts get-caller-identity
+
+  build:
+    commands:
+      - echo "🏗️ Iniciando build del backend..."
+      - cd apiFestivos
+
+      # Maven build con pruebas y cobertura
+      - echo "📋 Ejecutando tests con cobertura..."
+      - mvn clean verify -B
+
+      # Análisis de SonarQube (opcional en CI/CD)
+      # - echo "📊 Ejecutando análisis de SonarQube..."
+      # - mvn sonar:sonar -Dsonar.projectKey=festivos-api -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=$SONAR_TOKEN
+
+      # Generar artefactos
+      - echo "📦 Generando artefactos..."
+      - mvn package -DskipTests
+
+      # Construir imagen Docker
+      - echo "🐳 Construyendo imagen Docker..."
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $IMAGE_URI
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $REPOSITORY_URI:latest
+
+      # Mostrar imágenes construidas
+      - docker images | grep $IMAGE_REPO_NAME
+
+  post_build:
+    commands:
+      - echo "🚀 Post-build phase..."
+
+      # Push a ECR
+      - echo "📤 Pushing to ECR..."
+      - docker push $IMAGE_URI
+      - docker push $REPOSITORY_URI:latest
+
+      # Generar imagedefinitions.json para ECS
+      - echo "📄 Generando imagedefinitions.json..."
+      - cd ..
+      - |
+        cat <<EOF > imagedefinitions.json
+        [
+          {
+            "name": "festivos-api-container",
+            "imageUri": "$IMAGE_URI"
+          }
+        ]
+        EOF
+
+      # Mostrar contenido del archivo
+      - echo "📋 Contenido de imagedefinitions.json:"
+      - cat imagedefinitions.json
+
+      # Generar metadata adicional
+      - echo "📊 Generando metadata del build..."
+      - |
+        cat <<EOF > build-metadata.json
+        {
+          "buildId": "$CODEBUILD_BUILD_ID",
+          "buildNumber": "$CODEBUILD_BUILD_NUMBER",
+          "sourceVersion": "$CODEBUILD_RESOLVED_SOURCE_VERSION",
+          "imageTag": "$IMAGE_TAG",
+          "imageUri": "$IMAGE_URI",
+          "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "region": "$AWS_DEFAULT_REGION",
+          "accountId": "$AWS_ACCOUNT_ID"
+        }
+        EOF
+
+      # Cleanup de imágenes locales para ahorrar espacio
+      - echo "🧹 Cleanup de imágenes locales..."
+      - docker rmi $IMAGE_REPO_NAME:$IMAGE_TAG || true
+      - docker system prune -f || true
+
+      - echo "✅ Build completado exitosamente!"
+
+# Reportes y artefactos
+reports:
+  junit:
+    files:
+      - 'apiFestivos/**/target/surefire-reports/TEST-*.xml'
+    base-directory: '.'
+
+  jacoco-coverage:
+    files:
+      - 'apiFestivos/**/target/site/jacoco/jacoco.xml'
+    base-directory: '.'
+
+artifacts:
+  files:
+    - imagedefinitions.json
+    - build-metadata.json
+    - apiFestivos/target/site/jacoco-aggregate/**/*
+  name: festivos-api-backend-artifacts
+  base-directory: '.'
+
+cache:
+  paths:
+    - '/root/.m2/**/*'
+    - 'apiFestivos/target/**/*'

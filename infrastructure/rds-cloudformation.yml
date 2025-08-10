@@ -1,0 +1,202 @@
+﻿AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS PostgreSQL para API Festivos'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Ambiente de deployment
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium]
+    Description: Clase de instancia RDS
+
+  DBUsername:
+    Type: String
+    Default: festivos_user
+    Description: Usuario maestro de la base de datos
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: Contraseña del usuario maestro (min 8 caracteres)
+
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC donde crear la base de datos
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets privadas para RDS (mínimo 2 AZs)
+
+Resources:
+  # Subnet Group para RDS
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub '${Environment}-festivos-db-subnet-group'
+      DBSubnetGroupDescription: Subnet group para RDS PostgreSQL
+      SubnetIds: !Ref PrivateSubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-festivos-db-subnet-group'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: festivos-api
+
+  # Security Group para RDS
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${Environment}-festivos-rds-sg'
+      GroupDescription: Security group para RDS PostgreSQL
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref AppSecurityGroup
+          Description: Acceso desde ECS tasks
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-festivos-rds-sg'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Security Group para la aplicación
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${Environment}-festivos-app-sg'
+      GroupDescription: Security group para ECS tasks
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+          Description: API HTTP traffic
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-festivos-app-sg'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Instancia RDS PostgreSQL
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub '${Environment}-festivos-db'
+      DBName: festivos
+      Engine: postgres
+      EngineVersion: '15.4'
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: 20
+      MaxAllocatedStorage: 100
+      StorageType: gp2
+      StorageEncrypted: true
+
+      # Credenciales
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+
+      # Red y seguridad
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+
+      # Backup y mantenimiento
+      BackupRetentionPeriod: 7
+      PreferredBackupWindow: '03:00-04:00'
+      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+
+      # Monitoreo
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt EnhancedMonitoringRole.Arn
+      EnablePerformanceInsights: true
+      PerformanceInsightsRetentionPeriod: 7
+
+      # Tags
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-festivos-db'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: festivos-api
+
+  # Role para Enhanced Monitoring
+  EnhancedMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Environment}-rds-enhanced-monitoring-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole'
+
+  # Secrets Manager para credenciales
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${Environment}/festivos-api/database'
+      Description: Credenciales de base de datos para API Festivos
+      SecretString: !Sub |
+        {
+          "username": "${DBUsername}",
+          "password": "${DBPassword}",
+          "engine": "postgres",
+          "host": "${DBInstance.Endpoint.Address}",
+          "port": ${DBInstance.Endpoint.Port},
+          "dbname": "festivos",
+          "url": "jdbc:postgresql://${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/festivos"
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: festivos-api
+
+Outputs:
+  DBEndpoint:
+    Description: RDS instance endpoint
+    Value: !GetAtt DBInstance.Endpoint.Address
+    Export:
+      Name: !Sub '${Environment}-festivos-db-endpoint'
+
+  DBPort:
+    Description: RDS instance port
+    Value: !GetAtt DBInstance.Endpoint.Port
+    Export:
+      Name: !Sub '${Environment}-festivos-db-port'
+
+  DatabaseURL:
+    Description: JDBC URL para la aplicación
+    Value: !Sub 'jdbc:postgresql://${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/festivos'
+    Export:
+      Name: !Sub '${Environment}-festivos-db-url'
+
+  AppSecurityGroupId:
+    Description: Security Group ID para ECS tasks
+    Value: !Ref AppSecurityGroup
+    Export:
+      Name: !Sub '${Environment}-festivos-app-sg-id'
+
+  DBSecretArn:
+    Description: ARN del secret con credenciales de DB
+    Value: !Ref DBSecret
+    Export:
+      Name: !Sub '${Environment}-festivos-db-secret-arn'

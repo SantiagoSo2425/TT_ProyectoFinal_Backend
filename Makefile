@@ -11,6 +11,9 @@ help: ## Mostrar ayuda
 	@echo "  logs     - Ver logs de la API"
 	@echo "  sonar    - Ejecutar análisis de SonarQube"
 	@echo "  clean    - Limpiar contenedores y volúmenes"
+	@echo "  test-coverage - Ejecutar pruebas con cobertura"
+	@echo "  analyze  - Análisis completo (pruebas + SonarQube)"
+	@echo "  aws-build - Simular build de AWS CodeBuild localmente"
 
 build: ## Construir las imágenes Docker
 	docker-compose build --no-cache
@@ -26,6 +29,26 @@ down: ## Detener todos los servicios
 
 test: ## Ejecutar pruebas en la API
 	docker-compose exec api-festivos mvn test
+
+test-coverage: ## Ejecutar pruebas con cobertura
+	cd apiFestivos && mvn clean verify
+
+sonar: ## Ejecutar análisis de SonarQube
+	cd apiFestivos && mvn sonar:sonar \
+		-Dsonar.projectKey=festivos-api \
+		-Dsonar.host.url=http://localhost:9000 \
+		-Dsonar.token=${SONAR_TOKEN}
+
+analyze: test-coverage sonar ## Ejecutar análisis completo (pruebas + SonarQube)
+
+aws-build: ## Simular build de AWS CodeBuild localmente
+	@echo "🏗️ Simulando build de AWS CodeBuild..."
+	cd apiFestivos && \
+	export IMAGE_TAG=local-$(shell date +%Y%m%d-%H%M%S) && \
+	echo "Building with tag: $$IMAGE_TAG" && \
+	mvn clean verify && \
+	docker build -t festivos-api:$$IMAGE_TAG . && \
+	echo "✅ Build local completado con tag: $$IMAGE_TAG"
 
 logs: ## Ver logs de la API
 	docker-compose logs -f api-festivos
