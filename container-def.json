@@ -1,0 +1,34 @@
+﻿[
+  {
+    "name": "festivos-api",
+    "image": "251221985158.dkr.ecr.us-east-1.amazonaws.com/festivos-api:latest",
+    "cpu": 256,
+    "memory": 512,
+    "essential": true,
+    "portMappings": [
+      {
+        "containerPort": 8080,
+        "protocol": "tcp"
+      }
+    ],
+    "environment": [
+      {
+        "name": "SPRING_PROFILES_ACTIVE",
+        "value": "aws"
+      },
+      {
+        "name": "SPRING_DATASOURCE_URL",
+        "value": "jdbc:mysql://dev-festivos-mysql.c8fk4quwch2q.us-east-1.rds.amazonaws.com:3306/festivos?serverTimezone=UTC"
+      },
+      {
+        "name": "SPRING_DATASOURCE_USERNAME",
+        "value": "admin"
+      },
+      {
+        "name": "SPRING_DATASOURCE_PASSWORD",
+        "value": "santiago123"
+      }
+    ]
+  }
+]
+

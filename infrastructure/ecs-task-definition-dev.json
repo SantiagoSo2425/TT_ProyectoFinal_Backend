@@ -4,12 +4,12 @@
     "requiresCompatibilities": ["FARGATE"],
     "cpu": "256",
     "memory": "512",
-    "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
-    "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskRole",
+    "executionRoleArn": "arn:aws:iam::251221985158:role/ecsTaskExecutionRole",
+    "taskRoleArn": "arn:aws:iam::251221985158:role/ecsTaskRole",
     "containerDefinitions": [
         {
             "name": "festivos-api",
-            "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/festivos-api:latest",
+            "image": "251221985158.dkr.ecr.us-east-1.amazonaws.com/festivos-api:latest",
             "cpu": 256,
             "memory": 512,
             "memoryReservation": 256,
@@ -45,7 +45,7 @@
             "secrets": [
                 {
                     "name": "SPRING_DATASOURCE_PASSWORD",
-                    "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:festivos-db-password-XXXXXX"
+                    "valueFrom": "arn:aws:secretsmanager:us-east-1:251221985158:secret:dev-festivos-db-password-XXXXXX"
                 }
             ],
             "logConfiguration": {

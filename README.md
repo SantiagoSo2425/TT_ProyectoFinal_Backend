@@ -931,12 +931,9 @@ El CloudFormation crea en **AWS Secrets Manager**:
 
 ### **Paso 5: Configurar CodeBuild (Una sola vez)**
 En la consola de AWS CodeBuild, agregar estas variables de entorno:
-```bash
 AWS_ACCOUNT_ID=123456789012          # Se obtiene automáticamente del script
 AWS_DEFAULT_REGION=us-east-1
 IMAGE_REPO_NAME=festivos-api
-```
-
 ### **Paso 6: ¡Listo para CI/CD!**
 Después del deployment inicial:
 - ✅ **RDS funcionando** con backup automático
@@ -945,4 +942,89 @@ Después del deployment inicial:
 - ✅ **Task Definition** lista para ECS
 - ✅ **Pipeline CI/CD** puede comenzar a funcionar
 
-## Despliegue Inicial en AWS
+## API Festivos - Despliegue en AWS (Free Tier)
+
+Este proyecto permite desplegar una API de festivos en AWS utilizando únicamente servicios incluidos en el Free Tier. El despliegue crea una base de datos PostgreSQL en RDS, una imagen Docker en ECR y la API en ECS Fargate.
+
+## Requisitos previos
+
+- Cuenta AWS con Free Tier disponible
+- AWS CLI configurado (`aws configure`)
+- Docker instalado
+- Maven instalado
+- Acceso a la terminal/bash
+
+## Estructura de scripts
+
+- `scripts/deploy-aws.sh`: Despliega RDS + ECS (automatizado, recomendado)
+- `scripts/deploy-ecs-manual.sh`: Despliega solo ECS (requiere RDS existente)
+
+## Despliegue completo (RDS + ECS)
+
+1. **Clona el repositorio y accede al directorio raíz**
+   ```bash
+   git clone <repo-url>
+   cd TT_ANI_ProyectoFestivos
+   ```
+
+2. **Configura tus credenciales AWS**
+   ```bash
+   aws configure
+   ```
+
+3. **Ejecuta el script de despliegue**
+   ```bash
+   ./scripts/deploy-aws.sh [dev|staging|prod]
+   ```
+   - Si omites el parámetro, se usará `dev` por defecto.
+   - Ingresa la contraseña para la base de datos PostgreSQL cuando se solicite (mínimo 8 caracteres).
+
+4. **Espera a que el script complete el despliegue**
+   - El script compila la app, crea la base de datos, sube la imagen Docker y despliega la API en ECS.
+   - Al finalizar, mostrará los endpoints y recursos creados.
+
+## Despliegue manual solo de ECS (si ya tienes RDS)
+
+1. **Asegúrate de tener el stack RDS desplegado y funcionando**
+2. **Ejecuta el script manual de ECS**
+   ```bash
+   ./scripts/deploy-ecs-manual.sh [dev|staging|prod]
+   ```
+   - Ingresa la contraseña de la base de datos cuando se solicite.
+
+## Pruebas y endpoints
+
+- Verifica el estado de la API:
+  ```
+  http://<endpoint-ecs>:8080/actuator/health
+  ```
+- Endpoints principales:
+  - Obtener festivos: `/festivos/obtener/{año}`
+  - Verificar festivo: `/festivos/verificar/{año}/{mes}/{dia}`
+
+## Recursos creados
+
+- **RDS PostgreSQL**: Instancia db.t3.micro (Free Tier)
+- **ECR**: Repositorio Docker
+- **ECS Fargate**: Servicio API
+- **CloudWatch Logs**: Grupo de logs para la API
+- **Secrets Manager**: Contraseña de la base de datos
+
+## Consideraciones Free Tier
+
+- No crear más de 1 instancia RDS db.t3.micro
+- No exceder 750 horas/mes de uso
+- Mantener almacenamiento ≤ 20GB
+- Monitorear uso mensual en AWS Cost Explorer
+
+## Limpieza de recursos
+
+Para evitar costos, elimina los stacks cuando no los necesites:
+```bash
+aws cloudformation delete-stack --stack-name festivos-rds-dev --region us-east-1
+aws cloudformation delete-stack --stack-name festivos-ecs-dev --region us-east-1
+```
+
+## Soporte
+
+Para dudas o problemas, revisa los logs en CloudWatch y la documentación de AWS.

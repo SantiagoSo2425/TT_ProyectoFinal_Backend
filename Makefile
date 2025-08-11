@@ -14,22 +14,6 @@ help: ## Mostrar ayuda
 	@echo "  test-coverage - Ejecutar pruebas con cobertura"
 	@echo "  analyze  - Análisis completo (pruebas + SonarQube)"
 	@echo "  aws-build - Simular build de AWS CodeBuild localmente"
-
-build: ## Construir las imágenes Docker
-	docker-compose build --no-cache
-
-up: ## Levantar todos los servicios
-	docker-compose up -d postgres sonarqube
-	@echo "Esperando a que los servicios estén listos..."
-	sleep 30
-	docker-compose up -d api-festivos
-
-down: ## Detener todos los servicios
-	docker-compose down
-
-test: ## Ejecutar pruebas en la API
-	docker-compose exec api-festivos mvn test
-
 test-coverage: ## Ejecutar pruebas con cobertura
 	cd apiFestivos && mvn clean verify
 
@@ -49,6 +33,22 @@ aws-build: ## Simular build de AWS CodeBuild localmente
 	mvn clean verify && \
 	docker build -t festivos-api:$$IMAGE_TAG . && \
 	echo "✅ Build local completado con tag: $$IMAGE_TAG"
+
+
+build: ## Construir las imágenes Docker
+	docker-compose build --no-cache
+
+up: ## Levantar todos los servicios
+	docker-compose up -d postgres sonarqube
+	@echo "Esperando a que los servicios estén listos..."
+	sleep 30
+	docker-compose up -d api-festivos
+
+down: ## Detener todos los servicios
+	docker-compose down
+
+test: ## Ejecutar pruebas en la API
+	docker-compose exec api-festivos mvn test
 
 logs: ## Ver logs de la API
 	docker-compose logs -f api-festivos

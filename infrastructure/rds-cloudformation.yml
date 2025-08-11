@@ -1,5 +1,5 @@
-﻿AWSTemplateFormatVersion: '2010-09-09'
-Description: 'RDS PostgreSQL para API Festivos'
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS PostgreSQL para API Festivos - Configuración Free Tier (Costo Cero)'
 
 Parameters:
   Environment:
@@ -8,37 +8,47 @@ Parameters:
     AllowedValues: [dev, staging, prod]
     Description: Ambiente de deployment
 
-  DBInstanceClass:
-    Type: String
-    Default: db.t3.micro
-    AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium]
-    Description: Clase de instancia RDS
-
-  DBUsername:
-    Type: String
-    Default: festivos_user
-    Description: Usuario maestro de la base de datos
-
   DBPassword:
     Type: String
     NoEcho: true
     MinLength: 8
-    Description: Contraseña del usuario maestro (min 8 caracteres)
+    MaxLength: 41
+    Description: Password para usuario admin de la base de datos
+    ConstraintDescription: Debe tener entre 8 y 41 caracteres
 
   VPCId:
     Type: AWS::EC2::VPC::Id
-    Description: VPC donde crear la base de datos
+    Description: VPC ID donde crear los recursos
 
   PrivateSubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnets privadas para RDS (mínimo 2 AZs)
+    Type: CommaDelimitedList
+    Description: Lista de subnet IDs privadas (al menos 2 para RDS)
 
 Resources:
-  # Subnet Group para RDS
+  # Security Group para RDS - Free Tier (sin dependencias circulares)
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group para RDS PostgreSQL - Free Tier
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+          Description: Acceso PostgreSQL desde cualquier IP (solo para desarrollo)
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-festivos-db-sg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: CostOptimization
+          Value: FreeTier
+
+  # DB Subnet Group
   DBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupName: !Sub '${Environment}-festivos-db-subnet-group'
       DBSubnetGroupDescription: Subnet group para RDS PostgreSQL
       SubnetIds: !Ref PrivateSubnetIds
       Tags:
@@ -46,157 +56,85 @@ Resources:
           Value: !Sub '${Environment}-festivos-db-subnet-group'
         - Key: Environment
           Value: !Ref Environment
-        - Key: Project
-          Value: festivos-api
 
-  # Security Group para RDS
-  DBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: !Sub '${Environment}-festivos-rds-sg'
-      GroupDescription: Security group para RDS PostgreSQL
-      VpcId: !Ref VPCId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          SourceSecurityGroupId: !Ref AppSecurityGroup
-          Description: Acceso desde ECS tasks
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-festivos-rds-sg'
-        - Key: Environment
-          Value: !Ref Environment
-
-  # Security Group para la aplicación
-  AppSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: !Sub '${Environment}-festivos-app-sg'
-      GroupDescription: Security group para ECS tasks
-      VpcId: !Ref VPCId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          CidrIp: 0.0.0.0/0
-          Description: API HTTP traffic
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-festivos-app-sg'
-        - Key: Environment
-          Value: !Ref Environment
-
-  # Instancia RDS PostgreSQL
-  DBInstance:
+  # RDS PostgreSQL Instance - FREE TIER OPTIMIZED
+  FestivosDatabase:
     Type: AWS::RDS::DBInstance
-    DeletionPolicy: Snapshot
+    DeletionPolicy: Delete  # Para free tier, no mantener snapshots
     Properties:
-      DBInstanceIdentifier: !Sub '${Environment}-festivos-db'
-      DBName: festivos
+      DBInstanceIdentifier: !Sub '${Environment}-festivos-postgres'
+      DBInstanceClass: db.t3.micro  # FREE TIER: 750 horas/mes gratis
       Engine: postgres
-      EngineVersion: '15.4'
-      DBInstanceClass: !Ref DBInstanceClass
-      AllocatedStorage: 20
-      MaxAllocatedStorage: 100
-      StorageType: gp2
-      StorageEncrypted: true
-
-      # Credenciales
-      MasterUsername: !Ref DBUsername
+      EngineVersion: '15.13'  # Versión disponible más reciente
+      MasterUsername: festivos_user
       MasterUserPassword: !Ref DBPassword
 
-      # Red y seguridad
+      # STORAGE - FREE TIER: 20GB gratis
+      AllocatedStorage: 20
+      MaxAllocatedStorage: 20  # No permitir auto-scaling para evitar costos
+      StorageType: gp2
+      StorageEncrypted: false  # Encriptación NO incluida en free tier
+
+      # NETWORKING
       VPCSecurityGroups:
         - !Ref DBSecurityGroup
       DBSubnetGroupName: !Ref DBSubnetGroup
-      PubliclyAccessible: false
+      PubliclyAccessible: true  # Cambiar a true para permitir acceso desde ECS
+      Port: 5432
 
-      # Backup y mantenimiento
-      BackupRetentionPeriod: 7
-      PreferredBackupWindow: '03:00-04:00'
-      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+      # BACKUP - FREE TIER: Sin backups para evitar costos
+      BackupRetentionPeriod: 0  # Sin backups automáticos (evita costos)
+      DeleteAutomatedBackups: true
 
-      # Monitoreo
-      MonitoringInterval: 60
-      MonitoringRoleArn: !GetAtt EnhancedMonitoringRole.Arn
-      EnablePerformanceInsights: true
-      PerformanceInsightsRetentionPeriod: 7
+      # MAINTENANCE
+      PreferredMaintenanceWindow: 'sun:03:00-sun:04:00'
+      AutoMinorVersionUpgrade: true
+      DeletionProtection: false  # Permitir eliminación fácil
 
-      # Tags
+      # MONITORING - FREE TIER: Sin monitoring avanzado
+      MonitoringInterval: 0  # Sin Enhanced Monitoring (evita costos)
+      EnablePerformanceInsights: false  # Sin Performance Insights
+      EnableCloudwatchLogsExports: []  # Sin logs a CloudWatch
+
+      # MISC
+      MultiAZ: false  # Sin Multi-AZ (evita costos)
+      CopyTagsToSnapshot: false
+
       Tags:
         - Key: Name
-          Value: !Sub '${Environment}-festivos-db'
+          Value: !Sub '${Environment}-festivos-postgres'
         - Key: Environment
           Value: !Ref Environment
-        - Key: Project
-          Value: festivos-api
-
-  # Role para Enhanced Monitoring
-  EnhancedMonitoringRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub '${Environment}-rds-enhanced-monitoring-role'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: ''
-            Effect: Allow
-            Principal:
-              Service: monitoring.rds.amazonaws.com
-            Action: 'sts:AssumeRole'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole'
-
-  # Secrets Manager para credenciales
-  DBSecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub '${Environment}/festivos-api/database'
-      Description: Credenciales de base de datos para API Festivos
-      SecretString: !Sub |
-        {
-          "username": "${DBUsername}",
-          "password": "${DBPassword}",
-          "engine": "postgres",
-          "host": "${DBInstance.Endpoint.Address}",
-          "port": ${DBInstance.Endpoint.Port},
-          "dbname": "festivos",
-          "url": "jdbc:postgresql://${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/festivos"
-        }
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: festivos-api
+        - Key: CostOptimization
+          Value: FreeTier
+        - Key: BackupStrategy
+          Value: None
 
 Outputs:
   DBEndpoint:
-    Description: RDS instance endpoint
-    Value: !GetAtt DBInstance.Endpoint.Address
+    Description: RDS PostgreSQL Endpoint
+    Value: !GetAtt FestivosDatabase.Endpoint.Address
     Export:
-      Name: !Sub '${Environment}-festivos-db-endpoint'
+      Name: !Sub '${AWS::StackName}-DBEndpoint'
 
   DBPort:
-    Description: RDS instance port
-    Value: !GetAtt DBInstance.Endpoint.Port
+    Description: RDS PostgreSQL Port
+    Value: !GetAtt FestivosDatabase.Endpoint.Port
     Export:
-      Name: !Sub '${Environment}-festivos-db-port'
+      Name: !Sub '${AWS::StackName}-DBPort'
 
   DatabaseURL:
-    Description: JDBC URL para la aplicación
-    Value: !Sub 'jdbc:postgresql://${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/festivos'
+    Description: JDBC URL completa para la aplicación
+    Value: !Sub 'jdbc:postgresql://${FestivosDatabase.Endpoint.Address}:${FestivosDatabase.Endpoint.Port}/festivos'
     Export:
-      Name: !Sub '${Environment}-festivos-db-url'
+      Name: !Sub '${AWS::StackName}-DatabaseURL'
 
-  AppSecurityGroupId:
-    Description: Security Group ID para ECS tasks
-    Value: !Ref AppSecurityGroup
+  DBSecurityGroupId:
+    Description: Security Group ID para base de datos
+    Value: !Ref DBSecurityGroup
     Export:
-      Name: !Sub '${Environment}-festivos-app-sg-id'
+      Name: !Sub '${AWS::StackName}-DBSecurityGroup'
 
-  DBSecretArn:
-    Description: ARN del secret con credenciales de DB
-    Value: !Ref DBSecret
-    Export:
-      Name: !Sub '${Environment}-festivos-db-secret-arn'
+  FreeTierOptimizations:
+    Description: Optimizaciones aplicadas para Free Tier
+    Value: 'db.t3.micro, 20GB storage, no backups, no monitoring, no encryption, no Multi-AZ'
